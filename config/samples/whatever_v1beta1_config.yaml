@@ -1,0 +1,12 @@
+apiVersion: whatever.example.org/v1beta1
+kind: Config
+metadata:
+  labels:
+    app.kubernetes.io/name: config
+    app.kubernetes.io/instance: config-sample
+    app.kubernetes.io/part-of: operator-poc
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: operator-poc
+  name: config-sample
+spec:
+  foo: asdf
