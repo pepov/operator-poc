@@ -1,0 +1,6 @@
+apiVersion: whatever.example.org/v1beta1
+kind: Config
+metadata:
+  name: config-sample
+spec:
+  foo: asdf-patched

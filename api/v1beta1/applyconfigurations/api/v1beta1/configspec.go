@@ -20,7 +20,8 @@ package v1beta1
 // ConfigSpecApplyConfiguration represents an declarative configuration of the ConfigSpec type for use
 // with apply.
 type ConfigSpecApplyConfiguration struct {
-	Foo *string `json:"foo,omitempty"`
+	Foo   *string `json:"foo,omitempty"`
+	Other *string `json:"other,omitempty"`
 }
 
 // ConfigSpecApplyConfiguration constructs an declarative configuration of the ConfigSpec type for use with
@@ -34,5 +35,13 @@ func ConfigSpec() *ConfigSpecApplyConfiguration {
 // If called multiple times, the Foo field is set to the value of the last call.
 func (b *ConfigSpecApplyConfiguration) WithFoo(value string) *ConfigSpecApplyConfiguration {
 	b.Foo = &value
+	return b
+}
+
+// WithOther sets the Other field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Other field is set to the value of the last call.
+func (b *ConfigSpecApplyConfiguration) WithOther(value string) *ConfigSpecApplyConfiguration {
+	b.Other = &value
 	return b
 }

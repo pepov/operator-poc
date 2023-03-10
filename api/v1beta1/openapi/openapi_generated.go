@@ -199,6 +199,13 @@ func schema_pepov_operator_poc_api_v1beta1_ConfigSpec(ref common.ReferenceCallba
 							Format:      "",
 						},
 					},
+					"other": {
+						SchemaProps: spec.SchemaProps{
+							Description: "This one is not managed by us",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
 			},
 		},

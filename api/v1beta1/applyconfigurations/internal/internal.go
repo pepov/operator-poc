@@ -65,6 +65,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: foo
       type:
         scalar: string
+    - name: other
+      type:
+        scalar: string
 - name: com.github.pepov.operator-poc.api.v1beta1.ConfigStatus
   map:
     elementType:

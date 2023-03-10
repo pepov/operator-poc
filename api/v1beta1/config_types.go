@@ -31,6 +31,9 @@ type ConfigSpec struct {
 
 	// Foo is an example field of Config. Edit config_types.go to remove/update
 	Foo string `json:"foo,omitempty"`
+
+	// This one is not managed by us
+	Other string `json:"other,omitempty"`
 }
 
 // ConfigStatus defines the observed state of Config
