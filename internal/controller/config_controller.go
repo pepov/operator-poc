@@ -19,13 +19,11 @@ package controller
 import (
 	"context"
 	"fmt"
-	"sync"
+	"reflect"
 
 	"github.com/go-logr/logr"
-	hashstructure "github.com/mitchellh/hashstructure/v2"
 	"github.com/pepov/operator-poc/api/v1beta1/applyconfigurations/api/v1beta1"
 	"github.com/pkg/errors"
-	"github.com/spf13/cast"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -38,9 +36,8 @@ import (
 // ConfigReconciler reconciles a Config object
 type ConfigReconciler struct {
 	client.Client
-	Logger        logr.Logger
-	Scheme        *runtime.Scheme
-	ChangeTracker sync.Map
+	Logger logr.Logger
+	Scheme *runtime.Scheme
 }
 
 //+kubebuilder:rbac:groups=whatever.example.org,resources=configs,verbs=get;list;watch;create;update;patch;delete
@@ -64,72 +61,30 @@ func (r *ConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	desiredState := func(ac *v1beta1.ConfigApplyConfiguration) error {
-		ac.WithSpec(v1beta1.ConfigSpec().WithFoo("set by controller"))
-		return nil
-	}
-
-	applyIfChanged(r.ChangeTracker, c, desiredState, func() (client.Object, error) {
-		if ac, err := v1beta1.ExtractConfig(c, "whatever-operator"); err != nil {
+	actual := func() (interface{}, error) {
+		if actual, err := v1beta1.ExtractConfig(c, "whatever-operator"); err != nil {
 			return nil, errors.Wrap(err, "failed to extract apply config from original object")
 		} else {
 			// broken in ExtractConfig
-			ac.WithAPIVersion("whatever.example.org/v1beta1")
-			if err := desiredState(ac); err != nil {
-				return nil, errors.Wrap(err, "unable to set desired state on the extracted apply configuration")
-			}
-
-			var u map[string]interface{}
-			if u, err = runtime.DefaultUnstructuredConverter.ToUnstructured(ac); err != nil {
-				return nil, errors.Wrap(err, fmt.Sprintf("unable to convert apply config %+v to unstructured", ac))
-			}
-
-			o := &unstructured.Unstructured{
-				Object: u,
-			}
-
-			if err := r.Patch(ctx, o, client.Apply, client.FieldOwner("whatever-operator"), client.ForceOwnership); err != nil {
-				return nil, errors.Wrap(err, fmt.Sprintf("patch failed for object %+v", o))
-			}
-
-			r.Logger.Info("object updated", "object", o)
-
-			return o, nil
+			actual.WithAPIVersion("whatever.example.org/v1beta1")
+			return actual, nil
 		}
-	})
-
-	return ctrl.Result{}, nil
-}
-
-func applyIfChanged(
-	changeTracker sync.Map,
-	object *whateverv1beta1.Config,
-	desiredStateFn func(*v1beta1.ConfigApplyConfiguration) error,
-	mutateFn func() (client.Object, error)) error {
-
-	config := v1beta1.Config(object.Name, object.Namespace)
-
-	if err := desiredStateFn(config); err != nil {
-		return errors.Wrap(err, "failed to compile desired state")
 	}
 
-	if hash, err := hashstructure.Hash(config, hashstructure.FormatV2, nil); err != nil {
-		return errors.Wrap(err, fmt.Sprintf("unable to get hash for object %+v", config))
-	} else {
-		key := fmt.Sprintf("%s[%s]", client.ObjectKeyFromObject(object).String(), cast.ToString(hash))
-		if resourceVersion, ok := changeTracker.Load(key); ok {
-			// no change, no need to mutate
-			if resourceVersion == object.ResourceVersion {
-				return nil
-			}
-		}
-		if modifiedObject, err := mutateFn(); err != nil {
-			return errors.Wrap(err, "unable to mutate config")
+	desired := func() (interface{}, error) {
+		if desired, err := v1beta1.ExtractConfig(c, "whatever-operator"); err != nil {
+			return nil, errors.Wrap(err, "failed to extract apply config from original object")
 		} else {
-			changeTracker.Store(key, modifiedObject.GetResourceVersion())
+			// broken in ExtractConfig
+			desired.WithAPIVersion("whatever.example.org/v1beta1")
+			desired.WithSpec(v1beta1.ConfigSpec().WithFoo("set by controller"))
+			return desired, nil
 		}
 	}
-	return nil
+
+	err := applyIfChanged(actual, desired, executeApply(ctx, r.Logger, r.Client, "whatever-operator"))
+
+	return ctrl.Result{}, err
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -137,4 +92,50 @@ func (r *ConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&whateverv1beta1.Config{}).
 		Complete(r)
+}
+
+// executeApply is fully generic
+func executeApply(ctx context.Context, l logr.Logger, r client.Client, fieldManager string) func(ac interface{}) error {
+	return func(ac interface{}) error {
+		var err error
+		var u map[string]interface{}
+		if u, err = runtime.DefaultUnstructuredConverter.ToUnstructured(ac); err != nil {
+			return errors.Wrap(err, fmt.Sprintf("unable to convert apply config %+v to unstructured", ac))
+		}
+
+		o := &unstructured.Unstructured{
+			Object: u,
+		}
+
+		if err := r.Patch(ctx, o, client.Apply, client.FieldOwner(fieldManager), client.ForceOwnership); err != nil {
+			return errors.Wrap(err, fmt.Sprintf("patch failed for object %+v", o))
+		}
+
+		l.Info("object updated", "object", o)
+
+		return nil
+
+	}
+}
+
+func applyIfChanged(
+	actual func() (any, error),
+	desired func() (any, error),
+	mutateFn func(interface{}) error) error {
+
+	var err error
+	var a, d any
+	if a, err = actual(); err != nil {
+		return err
+	}
+
+	if d, err = desired(); err != nil {
+		return err
+	}
+
+	if reflect.DeepEqual(a, d) {
+		return nil
+	}
+
+	return mutateFn(d)
 }
